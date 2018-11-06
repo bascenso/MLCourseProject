@@ -1,0 +1,74 @@
+---
+title: "Machine Learning Course Project"
+author: "Bruno Ascenso"
+date: "November 6, 2018"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+  word_document:
+    toc: yes
+    toc_depth: '3'
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: '3'
+---
+
+```{r setup, include=FALSE, results='hide'}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret)
+
+```
+
+# Overview
+One thing that people regularly do is quantify how **much** of a particular activity they do, but they rarely quantify **how well** they do it. 
+
+In this project, I will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise. 
+
+This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+
+# Data analysis
+Data is organized in a training and a testing data set. Let's load both and look at their size:
+
+```{r}
+training <- read.csv("data/pml-training.csv")
+testing <- read.csv("data/pml-testing.csv")
+
+dim(training); dim(testing)
+```
+
+Let's also look at the variable to predict:
+```{r}
+table(training$classe)
+
+names(testing)[names(training) != names(testing)]
+```
+
+The variable to predict is not present in the testing data set, being replaced byu a variable called 'problem_id'.
+
+# Pre-processing the data
+The testing data set can't be used for validation, so I'll need to further split the training data. Since I'll use a strategy to combine predictors, it's better to split the training data into training, testing and validation data sets. I'll split 75%/20%/5% for training, testing and validation data sets.
+
+I'll also use only the variables that represent sensor data, removing others (subject name and timestamps).
+
+```{r}
+set.seed(555) # My lucky number
+
+inTrain <- createDataPartition(training$classe, p = 0.75, list = FALSE)
+trainData <- training[inTrain, 6:160]
+testData <- training[-inTrain, 6:160]
+
+inValidation <- createDataPartition(testData$classe, p = 0.2, list = FALSE)
+validData <- testData[inValidation, ]
+testData <- testData[-inValidation, ]
+
+```
+
+# Model fitting
+
+
+
+
