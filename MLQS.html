@@ -130,6 +130,7 @@ $(document).ready(function () {
 <li><a href="#data-analysis"><span class="toc-section-number">2</span> Data analysis</a></li>
 <li><a href="#pre-processing-the-data"><span class="toc-section-number">3</span> Pre-processing the data</a></li>
 <li><a href="#model-fitting"><span class="toc-section-number">4</span> Model fitting</a></li>
+<li><a href="#predicting-the-test-data-set"><span class="toc-section-number">5</span> Predicting the test data set</a></li>
 </ul>
 </div>
 
@@ -137,7 +138,6 @@ $(document).ready(function () {
 <h1><span class="header-section-number">1</span> Overview</h1>
 <p>One thing that people regularly do is quantify how <strong>much</strong> of a particular activity they do, but they rarely quantify <strong>how well</strong> they do it.</p>
 <p>In this project, I will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise.</p>
-<p>This is the “classe” variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.</p>
 </div>
 <div id="data-analysis" class="section level1">
 <h1><span class="header-section-number">2</span> Data analysis</h1>
@@ -148,28 +148,64 @@ testing &lt;- read.csv(&quot;data/pml-testing.csv&quot;)
 dim(training); dim(testing)</code></pre>
 <pre><code>## [1] 19622   160</code></pre>
 <pre><code>## [1]  20 160</code></pre>
-<p>Let’s also look at the variable to predict:</p>
+<p>The variable to predict is named ‘classe’ in the data set. According to the documentation, the interpretation for the values is:<br />
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).<br />
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes.</p>
+<p>Read more: <a href="http://groupware.les.inf.puc-rio.br/har#ixzz5WB9BtgOj" class="uri">http://groupware.les.inf.puc-rio.br/har#ixzz5WB9BtgOj</a></p>
 <pre class="r"><code>table(training$classe)</code></pre>
 <pre><code>## 
 ##    A    B    C    D    E 
 ## 5580 3797 3422 3216 3607</code></pre>
-<pre class="r"><code>names(testing)[names(training) != names(testing)]</code></pre>
-<pre><code>## [1] &quot;problem_id&quot;</code></pre>
-<p>The variable to predict is not present in the testing data set, being replaced byu a variable called ‘problem_id’.</p>
+<p>Now, let’s check the data for problems:</p>
+<pre class="r"><code>sum(complete.cases(training))</code></pre>
+<pre><code>## [1] 406</code></pre>
+<p>Most rows are not complete! After looking at the data, it seems that many variables are empty for most of the observations and thus can’t be used as predictors. So, I’ll select only the variables that have all observations complete and use those as candidate predictors.</p>
+<p>I’ll also use only the variables that represent sensor data, removing others (subject name, timestamps, window).</p>
+<pre class="r"><code>candidatePredictors &lt;- apply(training, 2, function(c) { all(!is.null(c) &amp;&amp; !is.na(c) &amp;&amp; c != &quot;&quot;) })
+
+trainingSubset &lt;- training[, candidatePredictors]
+
+trainingSubset &lt;- trainingSubset[, 8:60]
+
+dim(trainingSubset)</code></pre>
+<pre><code>## [1] 19622    53</code></pre>
+<p>Finally, test if there are any near zero variance variables in the remaining data set:</p>
+<pre class="r"><code>any(nearZeroVar(trainingSubset, saveMetrics = T)$nzv)</code></pre>
+<pre><code>## [1] FALSE</code></pre>
 </div>
 <div id="pre-processing-the-data" class="section level1">
 <h1><span class="header-section-number">3</span> Pre-processing the data</h1>
-<p>Since I’ll use a strategy to combine predictors, it’s better to split the training data and use the testing set as validation. I’ll also use only the variables that represent sensor data, removing others (subject name and timestamps).</p>
+<p>The testing data set can’t be used for validation, so I’ll need to subdivide the training data. Let’s split 80/20 as this is the most common split (as learned in the class).</p>
 <pre class="r"><code>set.seed(555) # My lucky number
 
-inTrain &lt;- createDataPartition(training$classe, p = 0.75, list = FALSE)
-
-trainData &lt;- training[inTrain, ]
-testData &lt;- training[-inTrain, ]
-validData &lt;- testing</code></pre>
+inTrain &lt;- createDataPartition(trainingSubset$classe, p = 0.8, list = FALSE)
+trainData &lt;- trainingSubset[inTrain, ]
+testData &lt;- trainingSubset[-inTrain, ]</code></pre>
+<p>The final datasets to be used are the following:<br />
+- Train: 15699 observations of 53 variables<br />
+- Test: 3923 observations of 53 variables</p>
 </div>
 <div id="model-fitting" class="section level1">
 <h1><span class="header-section-number">4</span> Model fitting</h1>
+<p>Since the variable to predict is discret, let’s fit the models that should provide the best results, as learned in the classes. However, since the boosting methods with this many variables would take a long time, let’s fit a random forest that should also produce good results.</p>
+<pre class="r"><code>modelRF &lt;- randomForest(classe ~ ., data = trainData, method = &quot;rf&quot;)
+
+predRF &lt;- predict(modelRF, testData)
+
+resultDF &lt;- confusionMatrix(predRF, testData$classe)
+
+resultDF$overall[1]</code></pre>
+<pre><code>##  Accuracy 
+## 0.9951568</code></pre>
+<p>The result is quite good with an accuracy of 99.52%. The estimated out of sample error is 0.48%.</p>
+</div>
+<div id="predicting-the-test-data-set" class="section level1">
+<h1><span class="header-section-number">5</span> Predicting the test data set</h1>
+<p>Finally, let’s apply the model generated to the test data set supplied in the exercise.</p>
+<pre class="r"><code>predict(modelRF, testing)</code></pre>
+<pre><code>##  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 
+##  B  A  B  A  A  E  D  B  A  A  B  C  B  A  E  E  A  B  B  B 
+## Levels: A B C D E</code></pre>
 </div>
 
 

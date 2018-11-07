@@ -19,16 +19,14 @@ output:
 ```{r setup, include=FALSE, results='hide'}
 knitr::opts_chunk$set(echo = TRUE)
 library(caret)
+library(randomForest)
 
 ```
 
 # Overview
 One thing that people regularly do is quantify how **much** of a particular activity they do, but they rarely quantify **how well** they do it. 
 
-In this project, I will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise. 
-
-This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
-
+In this project, I will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise.
 
 # Data analysis
 Data is organized in a training and a testing data set. Let's load both and look at their size:
@@ -40,35 +38,83 @@ testing <- read.csv("data/pml-testing.csv")
 dim(training); dim(testing)
 ```
 
-Let's also look at the variable to predict:
+The variable to predict is named 'classe' in the data set. According to the documentation, the interpretation for the values is:  
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).  
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes.
+
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz5WB9BtgOj
+
 ```{r}
 table(training$classe)
-
-names(testing)[names(training) != names(testing)]
 ```
 
-The variable to predict is not present in the testing data set, being replaced byu a variable called 'problem_id'.
+
+Now, let's check the data for problems:
+```{r}
+sum(complete.cases(training))
+
+```
+
+Most rows are not complete! After looking at the data, it seems that many variables are empty for most of the observations and thus can't be used as predictors. So, I'll select only the variables that have all observations complete and use those as candidate predictors.
+
+I'll also use only the variables that represent sensor data, removing others (subject name, timestamps, window).
+
+```{r}
+candidatePredictors <- apply(training, 2, function(c) { all(!is.null(c) && !is.na(c) && c != "") })
+
+trainingSubset <- training[, candidatePredictors]
+
+trainingSubset <- trainingSubset[, 8:60]
+
+dim(trainingSubset)
+```
+
+Finally, test if there are any near zero variance variables in the remaining data set:
+```{r}
+any(nearZeroVar(trainingSubset, saveMetrics = T)$nzv)
+
+```
 
 # Pre-processing the data
-The testing data set can't be used for validation, so I'll need to further split the training data. Since I'll use a strategy to combine predictors, it's better to split the training data into training, testing and validation data sets. I'll split 75%/20%/5% for training, testing and validation data sets.
+The testing data set can't be used for validation, so I'll need to subdivide the training data. Let's split 80/20 as this is the most common split (as learned in the class).
 
-I'll also use only the variables that represent sensor data, removing others (subject name and timestamps).
 
 ```{r}
 set.seed(555) # My lucky number
 
-inTrain <- createDataPartition(training$classe, p = 0.75, list = FALSE)
-trainData <- training[inTrain, 6:160]
-testData <- training[-inTrain, 6:160]
-
-inValidation <- createDataPartition(testData$classe, p = 0.2, list = FALSE)
-validData <- testData[inValidation, ]
-testData <- testData[-inValidation, ]
+inTrain <- createDataPartition(trainingSubset$classe, p = 0.8, list = FALSE)
+trainData <- trainingSubset[inTrain, ]
+testData <- trainingSubset[-inTrain, ]
 
 ```
 
+The final datasets to be used are the following:  
+- Train: `r dim(trainData)[1]` observations of `r dim(trainData)[2]` variables  
+- Test: `r dim(testData)[1]` observations of `r dim(testData)[2]` variables  
+
+
 # Model fitting
+Since the variable to predict is discret, let's fit the models that should provide the best results, as learned in the classes. However, since the boosting methods with this many variables would take a long time, let's fit a random forest that should also produce good results.
+
+```{r cache=TRUE}
+modelRF <- randomForest(classe ~ ., data = trainData, method = "rf")
+
+predRF <- predict(modelRF, testData)
+
+resultDF <- confusionMatrix(predRF, testData$classe)
+
+resultDF$overall[1]
+```
+
+The result is quite good with an accuracy of `r round(resultDF$overall[1] * 100, 2)`%. 
+The estimated out of sample error is `r round((1 - resultDF$overall[1]) * 100, 2)`%.
 
 
+# Predicting the test data set
 
+Finally, let's apply the model generated to the test data set supplied in the exercise.
 
+```{r}
+predict(modelRF, testing)
+
+```
